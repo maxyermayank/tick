@@ -1,0 +1,102 @@
+version: "3.7"
+
+services:
+  influxdb:
+    image: ${influxdb.image.repository}:${influxdb.image.tag}
+    configs:
+      - source: influxdb_config
+        target: /etc/influxdb/influxdb.conf
+    ports:
+      - target: ${influxdb.port}
+        published: ${influxdb.port}
+        mode: ingress
+    deploy:
+      replicas: ${influxdb.replicas}
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+        delay: 15s
+    volumes:
+      - type: volume
+        source: influxdb
+        target: /var/lib/influxdb
+    networks:
+      - monitoring
+      - ingress
+  telegraf:
+    image: ${telegraf.image.repository}:${telegraf.image.tag}
+    configs:
+      - source: telegraf_config
+        target: /etc/telegraf/telegraf.conf
+    ports:
+      - target: ${telegraf.port}
+        published: ${telegraf.port}
+        mode: ingress
+    deploy:
+      replicas: ${telegraf.replicas}
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+        delay: 15s
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+      - ingress
+  chronograf:
+    image: ${chronograf.image.repository}:${chronograf.image.tag}
+    ports:
+      - target: ${chronograf.port}
+        published: ${chronograf.port}
+        mode: ingress
+    command:
+      - chronograf
+      - --influxdb-url=http://influxdb:${influxdb.port}
+    networks:
+      - monitoring
+      - ingress
+    deploy:
+      replicas: ${chronograf.replicas}
+      labels:
+        traefik.enable: ${ui.enabled}
+        traefik.protocol: http
+        traefik.port: "${chronograf.port}"
+        traefik.frontend.entryPoints: http,https
+        traefik.frontend.rule: "Host:${ingress.host};PathPrefixStrip:${ingress.path}"
+        traefik.docker.network: ${ingress.network}
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+        delay: 15s
+  kapacitor:
+    image: ${kapacitor.image.repository}:${kapacitor.image.tag}
+    environment:
+      - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:${influxdb.port}
+    ports:
+      - target: ${kapacitor.port}
+        published: ${kapacitor.port}
+        mode: ingress
+    deploy:
+      replicas: ${kapacitor.replicas}
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+        delay: 15s
+    networks:
+      - monitoring
+      - ingress
+
+volumes:
+  logs:
+  influxdb:
+
+networks:
+  monitoring:
+  ingress:
+    name: ${ingress.network}
+
+configs:
+  influxdb_config:
+    file: configs/influxdb.conf
+  telegraf_config:
+    file: configs/telegraf.conf
